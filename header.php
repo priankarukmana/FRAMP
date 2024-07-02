@@ -1,4 +1,22 @@
 <?php
+// Start session at the beginning if you're using sessions
+// session_start();
+
+// Include database connection setup if it's in another file
+include 'config.php'; // Assume this file contains your $conn variable initialization
+
+// Ensure $user_id is defined, for example, from a session variable
+$user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+
+// Check if $conn is a valid connection and $user_id is not null before using them
+// if ($conn && $user_id) {
+//     // Your existing code that uses $conn and $user_id goes here
+//     // For example, a query using mysqli_query()
+// } else {
+//     // Handle the case where $conn is not a valid connection or $user_id is null
+//     echo "Database connection error or user ID is undefined.";
+// }
+
 if(isset($message)){
    foreach($message as $message){
       echo '
