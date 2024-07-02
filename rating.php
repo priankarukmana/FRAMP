@@ -85,6 +85,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             'one_star_review' => $total_one_star_review,
             'review_data'      => $data
         );
+        
 
         echo json_encode($output);
     } else {
