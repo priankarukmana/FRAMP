@@ -1,433 +1,359 @@
 <?php
-
 include 'config.php';
-
-// Include the header file
 include 'header.php';
-
 session_start();
 
-if(!isset($_SESSION['user_id'])){
-   header('location:login.php');
-   exit;
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['status' => 'error', 'message' => 'User not logged in']);
+    exit;
 }
 
-// Assuming you're passing the product ID as a GET parameter
-if(isset($_GET['product_id'])){
-    $product_id = mysqli_real_escape_string($conn, $_GET['product_id']); // Sanitize the input
+// Handle loading review data
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'load_data') {
+    $product_id = mysqli_real_escape_string($conn, $_POST['product_id']);
 
-    // Fetch product details
-    $query = "SELECT * FROM `products` WHERE product_id = '$product_id'";
+    // Fetch review data
+    $query = "SELECT * FROM review WHERE id = '$product_id' ORDER BY review_id DESC";
     $result = mysqli_query($conn, $query);
 
-    if(mysqli_num_rows($result) > 0){
-        $productDetails = mysqli_fetch_assoc($result);
-        // Now you can use $productDetails['name'], $productDetails['price'], etc., in your HTML below
+    if (!$result) {
+        echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
+        exit;
+    }
+
+    $data = array();
+    while ($row = mysqli_fetch_assoc($result)) {
+        $data[] = $row;
+    }
+
+    // Calculate average rating and count ratings
+    $total_reviews = count($data);
+    $average_rating = 0;
+    $total_five_star = 0;
+    $total_four_star = 0;
+    $total_three_star = 0;
+    $total_two_star = 0;
+    $total_one_star = 0;
+
+    foreach ($data as $review) {
+        $average_rating += $review['user_rating'];
+        switch ($review['user_rating']) {
+            case '5':
+                $total_five_star++;
+                break;
+            case '4':
+                $total_four_star++;
+                break;
+            case '3':
+                $total_three_star++;
+                break;
+            case '2':
+                $total_two_star++;
+                break;
+            case '1':
+                $total_one_star++;
+                break;
+        }
+    }
+
+    $average_rating = $total_reviews > 0 ? $average_rating / $total_reviews : 0;
+
+    $output = array(
+        'average_rating'   => number_format($average_rating, 1),
+        'total_reviews'    => $total_reviews,
+        'total_five_star'  => $total_five_star,
+        'total_four_star'  => $total_four_star,
+        'total_three_star' => $total_three_star,
+        'total_two_star'   => $total_two_star,
+        'total_one_star'   => $total_one_star,
+        'review_data'      => $data
+    );
+
+    echo json_encode($output);
+    exit;
+}
+
+// Handle submitting a new review
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['user_name']) && isset($_POST['user_review']) && isset($_POST['rating_data']) && isset($_POST['product_id'])) {
+    $user_name = mysqli_real_escape_string($conn, $_POST['user_name']);
+    $user_review = mysqli_real_escape_string($conn, $_POST['user_review']);
+    $rating_data = mysqli_real_escape_string($conn, $_POST['rating_data']);
+    $product_id = mysqli_real_escape_string($conn, $_POST['product_id']);
+
+    // Insert new review into database
+    $query = "INSERT INTO review (id, user_name, user_rating, user_review, datetime) VALUES ('$product_id', '$user_name', '$rating_data', '$user_review', NOW())";
+
+    if (mysqli_query($conn, $query)) {
+        echo json_encode(['status' => 'success', 'message' => 'Your review and rating have been successfully submitted']);
     } else {
-        // Handle case where no product is found
-        echo "Product not found.";
+        echo json_encode(['status' => 'error', 'message' => mysqli_error($conn)]);
     }
 } else {
-    // Handle case where product_id is not passed
-    echo "No product specified.";
+    echo json_encode(['status' => 'error', 'message' => 'Invalid request']);
 }
-
-if($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if(isset($_POST['action']) && $_POST['action'] == 'load_data') {
-        $product_id = mysqli_real_escape_string($conn, $_POST['product_id']); // Get the product ID
-
-        $query = "SELECT * FROM reviews WHERE product_id = '$product_id'";
-        $result = mysqli_query($conn, $query);
-        
-        $data = array();
-
-        while($row = mysqli_fetch_assoc($result)) {
-            $data[] = $row;
-        }
-
-        $average_rating = 0;
-        $total_review = 0;
-        $total_five_star_review = 0;
-        $total_four_star_review = 0;
-        $total_three_star_review = 0;
-        $total_two_star_review = 0;
-        $total_one_star_review = 0;
-
-        foreach($data as $review) {
-            $total_review++;
-            if($review['rating'] == '5') {
-                $total_five_star_review++;
-            }
-            if($review['rating'] == '4') {
-                $total_four_star_review++;
-            }
-            if($review['rating'] == '3') {
-                $total_three_star_review++;
-            }
-            if($review['rating'] == '2') {
-                $total_two_star_review++;
-            }
-            if($review['rating'] == '1') {
-                $total_one_star_review++;
-            }
-            $average_rating += $review['rating'];
-        }
-
-        $average_rating = $total_review > 0 ? $average_rating / $total_review : 0;
-
-        $output = array(
-            'average_rating'   => number_format($average_rating, 1),
-            'total_review'     => $total_review,
-            'five_star_review' => $total_five_star_review,
-            'four_star_review' => $total_four_star_review,
-            'three_star_review' => $total_three_star_review,
-            'two_star_review' => $total_two_star_review,
-            'one_star_review' => $total_one_star_review,
-            'review_data'      => $data
-        );
-        
-
-        echo json_encode($output);
-    } else {
-        $user_name = mysqli_real_escape_string($conn, $_POST['user_name']);
-        $user_review = mysqli_real_escape_string($conn, $_POST['user_review']);
-        $rating_data = mysqli_real_escape_string($conn, $_POST['rating_data']);
-        $product_id = mysqli_real_escape_string($conn, $_POST['product_id']);
-
-        $query = "INSERT INTO reviews (user_name, user_review, rating, product_id, datetime) VALUES ('$user_name', '$user_review', '$rating_data', '$product_id', NOW())";
-        
-        if(mysqli_query($conn, $query)) {
-            echo "Your Review & Rating Successfully Submitted";
-        } else {
-            echo "Error: " . mysqli_error($conn);
-        }
-    }
-}
-
-
 ?>
+
+
+
+
 
 <!DOCTYPE HTML>
 <html>
 <head>
     <meta charset="utf-8" />
-    <title></title>
+    <title>Product Review System</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
     <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.10.0/css/all.css" integrity="sha384-AYmEC3Yw5cVb3ZcuHtOA93w35dYTsvhLPVnYs9eStHfGJvOvKxVfELGroGkvsg+p" crossorigin="anonymous"/>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
-	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
 </head>
 <body>
     <div class="container">
-    	<h1 class="mt-5 mb-5"></h1>
-    	<div class="card">
-    		<div class="card-header">Product Review</div>
-    		<div class="card-body">
-    			<div class="row">
-    				<div class="col-sm-4 text-center">
-    					<h1 class="text-warning mt-4 mb-4">
-    						<b><span id="average_rating">0.0</span> / 5</b>
-    					</h1>
-    					<div class="mb-3">
-    						<i class="fas fa-star star-light mr-1 main_star"></i>
+        <h1 class="mt-5 mb-5">Product Review System</h1>
+        <div class="card mb-3">
+            <div class="card-header">Select Product</div>
+            <div class="card-body">
+                <form id="filter_form">
+                    <div class="form-group">
+                        <label for="product">Choose a Product:</label>
+                        <!-- Main form -->
+                        <select class="form-control" id="product" name="product_id">
+                            <option value="">Select Product</option>
+                            <?php
+                            // Fetch products from database
+                            $query = "SELECT id, name FROM products";
+                            $result = mysqli_query($conn, $query);
+                            if ($result) {
+                                while ($row = mysqli_fetch_assoc($result)) {
+                                    echo '<option value="' . $row['id'] . '">' . $row['name'] . '</option>';
+                                }
+                            }
+                            ?>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Show Reviews</button>
+                </form>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">Product Review</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-sm-4 text-center">
+                        <h1 class="text-warning mt-4 mb-4">
+                            <b><span id="average_rating">0.0</span> / 5</b>
+                        </h1>
+                        <div class="mb-3">
                             <i class="fas fa-star star-light mr-1 main_star"></i>
                             <i class="fas fa-star star-light mr-1 main_star"></i>
                             <i class="fas fa-star star-light mr-1 main_star"></i>
                             <i class="fas fa-star star-light mr-1 main_star"></i>
-	    				</div>
-    					<h3><span id="total_review">0</span> Review</h3>
-    				</div>
-    				<div class="col-sm-4">
-    					<p>
+                            <i class="fas fa-star star-light mr-1 main_star"></i>
+                        </div>
+                        <h3><span id="total_review">0</span> Review</h3>
+                    </div>
+                    <div class="col-sm-4">
+                        <p>
                             <div class="progress-label-left"><b>5</b> <i class="fas fa-star text-warning"></i></div>
-
                             <div class="progress-label-right">(<span id="total_five_star_review">0</span>)</div>
                             <div class="progress">
                                 <div class="progress-bar bg-warning" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="five_star_progress"></div>
                             </div>
                         </p>
-    					<p>
+                        <p>
                             <div class="progress-label-left"><b>4</b> <i class="fas fa-star text-warning"></i></div>
-                            
                             <div class="progress-label-right">(<span id="total_four_star_review">0</span>)</div>
                             <div class="progress">
                                 <div class="progress-bar bg-warning" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="four_star_progress"></div>
-                            </div>               
+                            </div>
                         </p>
-    					<p>
+                        <p>
                             <div class="progress-label-left"><b>3</b> <i class="fas fa-star text-warning"></i></div>
-                            
                             <div class="progress-label-right">(<span id="total_three_star_review">0</span>)</div>
                             <div class="progress">
                                 <div class="progress-bar bg-warning" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="three_star_progress"></div>
-                            </div>               
+                            </div>
                         </p>
-    					<p>
+                        <p>
                             <div class="progress-label-left"><b>2</b> <i class="fas fa-star text-warning"></i></div>
-                            
                             <div class="progress-label-right">(<span id="total_two_star_review">0</span>)</div>
                             <div class="progress">
                                 <div class="progress-bar bg-warning" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="two_star_progress"></div>
-                            </div>               
+                            </div>
                         </p>
-    					<p>
+                        <p>
                             <div class="progress-label-left"><b>1</b> <i class="fas fa-star text-warning"></i></div>
-                            
                             <div class="progress-label-right">(<span id="total_one_star_review">0</span>)</div>
                             <div class="progress">
                                 <div class="progress-bar bg-warning" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="one_star_progress"></div>
-                            </div>               
+                            </div>
                         </p>
-    				</div>
-    				<div class="col-sm-4 text-center">
-    					<h3 class="mt-4 mb-3">Write Review Here</h3>
-    					<button type="button" name="add_review" id="add_review" class="btn btn-primary">Review</button>
-    				</div>
-    			</div>
-    		</div>
-    	</div>
-    	<div class="mt-5" id="review_content"></div>
+                    </div>
+                    <div class="col-sm-4 text-center">
+                        <h3 class="mt-4 mb-3">Write Review Here</h3>
+                        <button type="button" name="add_review" id="add_review" class="btn btn-primary">Review</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-5" id="review_content"></div>
+    </div>
+
+    <!-- Add Review Modal -->
+    <div id="review_modal" class="modal" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Submit Review</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="review_form">
+                        <div class="form-group">
+                            <label for="review_product">Select Product:</label>
+                            <!-- Modal form -->
+                            <select class="form-control" id="review_product" name="product_id">
+                                <option value="">Select Product</option>
+                                <?php
+                                // Fetch products from database
+                                $query = "SELECT id, name FROM products";
+                                $result = mysqli_query($conn, $query);
+                                if ($result) {
+                                    while ($row = mysqli_fetch_assoc($result)) {
+                                        echo '<option value="' . $row['id'] . '">' . $row['name'] . '</option>';
+                                    }
+                                }
+                                ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Enter Your Name</label>
+                            <input type="text" id="user_name" class="form-control" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Enter Your Review</label>
+                            <textarea id="user_review" class="form-control" required></textarea>
+                        </div>
+                        <div class="form-group text-center mt-4">
+                            <i class="fas fa-star star-light submit_star mr-1" id="submit_star_1" data-rating="1"></i>
+                            <i class="fas fa-star star-light submit_star mr-1" id="submit_star_2" data-rating="2"></i>
+                            <i class="fas fa-star star-light submit_star mr-1" id="submit_star_3" data-rating="3"></i>
+                            <i class="fas fa-star star-light submit_star mr-1" id="submit_star_4" data-rating="4"></i>
+                            <i class="fas fa-star star-light submit_star mr-1" id="submit_star_5" data-rating="5"></i>
+                        </div>
+                        <div class="form-group mt-3 text-center">
+                            <button type="button" class="btn btn-primary" id="save_review">Submit</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 </html>
 
-<div id="review_modal" class="modal" tabindex="-1" role="dialog">
-  	<div class="modal-dialog" role="document">
-    	<div class="modal-content">
-	      	<div class="modal-header">
-	        	<h5 class="modal-title">Submit Review</h5>
-	        	<button type="button" class="close" data-dismiss="modal" aria-label="Close">
-	          		<span aria-hidden="true">&times;</span>
-	        	</button>
-	      	</div>
-	      	<div class="modal-body">
-	      		<h4 class="text-center mt-2 mb-4">
-	        		<i class="fas fa-star star-light submit_star mr-1" id="submit_star_1" data-rating="1"></i>
-                    <i class="fas fa-star star-light submit_star mr-1" id="submit_star_2" data-rating="2"></i>
-                    <i class="fas fa-star star-light submit_star mr-1" id="submit_star_3" data-rating="3"></i>
-                    <i class="fas fa-star star-light submit_star mr-1" id="submit_star_4" data-rating="4"></i>
-                    <i class="fas fa-star star-light submit_star mr-1" id="submit_star_5" data-rating="5"></i>
-	        	</h4>
-	        	<div class="form-group">
-	        		<input type="text" name="user_name" id="user_name" class="form-control" placeholder="Enter Your Name" />
-	        	</div>
-	        	<div class="form-group">
-	        		<textarea name="user_review" id="user_review" class="form-control" placeholder="Type Review Here"></textarea>
-	        	</div>
-	        	<div class="form-group text-center mt-4">
-	        		<button type="button" class="btn btn-primary" id="save_review">Submit</button>
-	        	</div>
-	      	</div>
-    	</div>
-  	</div>
-</div>
-
 <style>
-.progress-label-left
-{
+.progress-label-left {
     float: left;
     margin-right: 0.5em;
     line-height: 1em;
 }
-.progress-label-right
-{
+.progress-label-right {
     float: right;
     margin-left: 0.3em;
     line-height: 1em;
 }
-.star-light
-{
-	color:#e9ecef;
+.star-light {
+    color: #e9ecef;
 }
 </style>
 
 <script>
-
 $(document).ready(function(){
-
-	var rating_data = 0;
-
+    // Show review modal
     $('#add_review').click(function(){
-
         $('#review_modal').modal('show');
-
     });
 
-    $(document).on('mouseenter', '.submit_star', function(){
-
+    // Handle star rating hover effect
+    $('.submit_star').hover(function(){
         var rating = $(this).data('rating');
-
         reset_background();
-
-        for(var count = 1; count <= rating; count++)
-        {
-
-            $('#submit_star_'+count).addClass('text-warning');
-
+        for (var count = 1; count <= rating; count++) {
+            $('#submit_star_' + count).addClass('text-warning');
         }
-
     });
 
-    function reset_background()
-    {
-        for(var count = 1; count <= 5; count++)
-        {
-
-            $('#submit_star_'+count).addClass('star-light');
-
-            $('#submit_star_'+count).removeClass('text-warning');
-
+    // Function to reset star background
+    function reset_background() {
+        for (var count = 1; count <= 5; count++) {
+            $('#submit_star_' + count).removeClass('text-warning');
         }
     }
 
-    $(document).on('mouseleave', '.submit_star', function(){
-
-        reset_background();
-
-        for(var count = 1; count <= rating_data; count++)
-        {
-
-            $('#submit_star_'+count).removeClass('star-light');
-
-            $('#submit_star_'+count).addClass('text-warning');
-        }
-
+    // Handle star click event
+    $('.submit_star').click(function(){
+        var rating = $(this).data('rating');
+        $('#user_rating').val(rating);
     });
 
-    $(document).on('click', '.submit_star', function(){
-
-        rating_data = $(this).data('rating');
-
-    });
-
+    // Handle save review button click
     $('#save_review').click(function(){
-
         var user_name = $('#user_name').val();
-
         var user_review = $('#user_review').val();
+        var rating = $('#user_rating').val();
+        var product_id = $('#review_product').val(); // Ensure correct product ID field
 
-        if(user_name == '' || user_review == '')
-        {
-            alert("Please Fill Both Field");
+        // Validate form data
+        if (user_name === '' || user_review === '' || rating === '') {
+            alert("Please fill in all fields and give a rating.");
             return false;
-        }
-        else
-        {
+        } else {
+            // Submit data via AJAX
             $.ajax({
-                url:"submit_rating.php",
-                method:"POST",
-                data:{rating_data:rating_data, user_name:user_name, user_review:user_review},
-                success:function(data)
-                {
+                url: "submit_rating.php",
+                method: "POST",
+                data: {
+                    product_id: product_id,
+                    user_name: user_name,
+                    user_rating: rating,
+                    user_review: user_review
+                },
+                success: function(data) {
+                    // Handle success
                     $('#review_modal').modal('hide');
-
-                    load_rating_data();
-
-                    alert(data);
+                    fetch_reviews(product_id); // Assuming this function updates review display
+                },
+                error: function(xhr, status, error) {
+                    // Handle error
+                    alert("Error submitting review: " + error);
                 }
-            })
+            });
         }
-
     });
 
-    load_rating_data();
-
-    function load_rating_data()
-    {
+    // Function to fetch reviews
+    function fetch_reviews(product_id) {
         $.ajax({
-            url:"submit_rating.php",
-            method:"POST",
-            data:{action:'load_data'},
-            dataType:"JSON",
-            success:function(data)
-            {
-                $('#average_rating').text(data.average_rating);
-                $('#total_review').text(data.total_review);
-
-                var count_star = 0;
-
-                $('.main_star').each(function(){
-                    count_star++;
-                    if(Math.ceil(data.average_rating) >= count_star)
-                    {
-                        $(this).addClass('text-warning');
-                        $(this).addClass('star-light');
-                    }
-                });
-
-                $('#total_five_star_review').text(data.five_star_review);
-
-                $('#total_four_star_review').text(data.four_star_review);
-
-                $('#total_three_star_review').text(data.three_star_review);
-
-                $('#total_two_star_review').text(data.two_star_review);
-
-                $('#total_one_star_review').text(data.one_star_review);
-
-                $('#five_star_progress').css('width', (data.five_star_review/data.total_review) * 100 + '%');
-
-                $('#four_star_progress').css('width', (data.four_star_review/data.total_review) * 100 + '%');
-
-                $('#three_star_progress').css('width', (data.three_star_review/data.total_review) * 100 + '%');
-
-                $('#two_star_progress').css('width', (data.two_star_review/data.total_review) * 100 + '%');
-
-                $('#one_star_progress').css('width', (data.one_star_review/data.total_review) * 100 + '%');
-
-                if(data.review_data.length > 0) {
-                    var html = '';
-
-                    for(var count = 0; count < data.review_data.length; count++) {
-                        html += '<div class="row mb-3">';
-
-                        html += '<div class="col-sm-1"><div class="rounded-circle bg-danger text-white pt-2 pb-2"><h3 class="text-center">'+data.review_data[count].user_name.charAt(0)+'</h3></div></div>';
-
-                        html += '<div class="col-sm-11">';
-
-                        html += '<div class="card">';
-
-                        // Add product name here
-                        html += '<div class="card-header"><b>'+data.review_data[count].user_name+'</b> - <small>Review for '+data.review_data[count].product_name+'</small></div>';
-
-                        html += '<div class="card-body">';
-
-                        for(var star = 1; star <= 5; star++) {
-                            var class_name = '';
-
-                            if(data.review_data[count].rating >= star) {
-                                class_name = 'text-warning';
-                            } else {
-                                class_name = 'star-light';
-                            }
-
-                            html += '<i class="fas fa-star '+class_name+' mr-1"></i>';
-                        }
-
-                        html += '<br />';
-
-                        html += data.review_data[count].user_review;
-
-                        html += '</div>';
-
-                        html += '<div class="card-footer text-right">On '+data.review_data[count].datetime+'</div>';
-
-                        html += '</div>';
-
-                        html += '</div>';
-
-                        html += '</div>';
-                    }
-
-                    $('#review_content').html(html);
-                }
+            url: "fetch_rating.php",
+            method: "POST",
+            data: { product_id: product_id },
+            success: function(data) {
+                $('#review_content').html(data); // Update review display
+            },
+            error: function(xhr, status, error) {
+                alert("Error fetching reviews: " + error);
             }
-        })
+        });
     }
-
 });
 
 </script>
+
+
