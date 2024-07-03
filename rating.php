@@ -1,3 +1,112 @@
+<?php
+
+include 'config.php';
+
+// Include the header file
+include 'header.php';
+
+session_start();
+
+if(!isset($_SESSION['user_id'])){
+   header('location:login.php');
+   exit;
+}
+
+// Assuming you're passing the product ID as a GET parameter
+if(isset($_GET['product_id'])){
+    $product_id = mysqli_real_escape_string($conn, $_GET['product_id']); // Sanitize the input
+
+    // Fetch product details
+    $query = "SELECT * FROM `products` WHERE product_id = '$product_id'";
+    $result = mysqli_query($conn, $query);
+
+    if(mysqli_num_rows($result) > 0){
+        $productDetails = mysqli_fetch_assoc($result);
+        // Now you can use $productDetails['name'], $productDetails['price'], etc., in your HTML below
+    } else {
+        // Handle case where no product is found
+        echo "Product not found.";
+    }
+} else {
+    // Handle case where product_id is not passed
+    echo "No product specified.";
+}
+
+if($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if(isset($_POST['action']) && $_POST['action'] == 'load_data') {
+        $product_id = mysqli_real_escape_string($conn, $_POST['product_id']); // Get the product ID
+
+        $query = "SELECT * FROM reviews WHERE product_id = '$product_id'";
+        $result = mysqli_query($conn, $query);
+        
+        $data = array();
+
+        while($row = mysqli_fetch_assoc($result)) {
+            $data[] = $row;
+        }
+
+        $average_rating = 0;
+        $total_review = 0;
+        $total_five_star_review = 0;
+        $total_four_star_review = 0;
+        $total_three_star_review = 0;
+        $total_two_star_review = 0;
+        $total_one_star_review = 0;
+
+        foreach($data as $review) {
+            $total_review++;
+            if($review['rating'] == '5') {
+                $total_five_star_review++;
+            }
+            if($review['rating'] == '4') {
+                $total_four_star_review++;
+            }
+            if($review['rating'] == '3') {
+                $total_three_star_review++;
+            }
+            if($review['rating'] == '2') {
+                $total_two_star_review++;
+            }
+            if($review['rating'] == '1') {
+                $total_one_star_review++;
+            }
+            $average_rating += $review['rating'];
+        }
+
+        $average_rating = $total_review > 0 ? $average_rating / $total_review : 0;
+
+        $output = array(
+            'average_rating'   => number_format($average_rating, 1),
+            'total_review'     => $total_review,
+            'five_star_review' => $total_five_star_review,
+            'four_star_review' => $total_four_star_review,
+            'three_star_review' => $total_three_star_review,
+            'two_star_review' => $total_two_star_review,
+            'one_star_review' => $total_one_star_review,
+            'review_data'      => $data
+        );
+        
+
+        echo json_encode($output);
+    } else {
+        $user_name = mysqli_real_escape_string($conn, $_POST['user_name']);
+        $user_review = mysqli_real_escape_string($conn, $_POST['user_review']);
+        $rating_data = mysqli_real_escape_string($conn, $_POST['rating_data']);
+        $product_id = mysqli_real_escape_string($conn, $_POST['product_id']);
+
+        $query = "INSERT INTO reviews (user_name, user_review, rating, product_id, datetime) VALUES ('$user_name', '$user_review', '$rating_data', '$product_id', NOW())";
+        
+        if(mysqli_query($conn, $query)) {
+            echo "Your Review & Rating Successfully Submitted";
+        } else {
+            echo "Error: " . mysqli_error($conn);
+        }
+    }
+}
+
+
+?>
+
 <!DOCTYPE HTML>
 <html>
 <head>
@@ -6,12 +115,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
     <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.10.0/css/all.css" integrity="sha384-AYmEC3Yw5cVb3ZcuHtOA93w35dYTsvhLPVnYs9eStHfGJvOvKxVfELGroGkvsg+p" crossorigin="anonymous"/>
+    <link rel="stylesheet" href="css/style.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
 	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
 </head>
 <body>
-<?php include 'header.php'; ?>
     <div class="container">
     	<h1 class="mt-5 mb-5"></h1>
     	<div class="card">
@@ -269,12 +378,10 @@ $(document).ready(function(){
 
                 $('#one_star_progress').css('width', (data.one_star_review/data.total_review) * 100 + '%');
 
-                if(data.review_data.length > 0)
-                {
+                if(data.review_data.length > 0) {
                     var html = '';
 
-                    for(var count = 0; count < data.review_data.length; count++)
-                    {
+                    for(var count = 0; count < data.review_data.length; count++) {
                         html += '<div class="row mb-3">';
 
                         html += '<div class="col-sm-1"><div class="rounded-circle bg-danger text-white pt-2 pb-2"><h3 class="text-center">'+data.review_data[count].user_name.charAt(0)+'</h3></div></div>';
@@ -283,20 +390,17 @@ $(document).ready(function(){
 
                         html += '<div class="card">';
 
-                        html += '<div class="card-header"><b>'+data.review_data[count].user_name+'</b></div>';
+                        // Add product name here
+                        html += '<div class="card-header"><b>'+data.review_data[count].user_name+'</b> - <small>Review for '+data.review_data[count].product_name+'</small></div>';
 
                         html += '<div class="card-body">';
 
-                        for(var star = 1; star <= 5; star++)
-                        {
+                        for(var star = 1; star <= 5; star++) {
                             var class_name = '';
 
-                            if(data.review_data[count].rating >= star)
-                            {
+                            if(data.review_data[count].rating >= star) {
                                 class_name = 'text-warning';
-                            }
-                            else
-                            {
+                            } else {
                                 class_name = 'star-light';
                             }
 
