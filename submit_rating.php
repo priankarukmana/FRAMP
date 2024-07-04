@@ -9,6 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user_name = filter_input(INPUT_POST, 'user_name', FILTER_SANITIZE_STRING);
     $user_rating = filter_input(INPUT_POST, 'user_rating', FILTER_SANITIZE_NUMBER_INT);
     $user_review = filter_input(INPUT_POST, 'user_review', FILTER_SANITIZE_STRING);
+    
 
     // Validate input
     if ($product_id === null || !is_numeric($product_id) || $user_name === null || $user_rating === null || $user_review === null) {
@@ -17,12 +18,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
+        // Use PDO for the database connection from config.php
+        global $pdo;
+
         // Prepare statement for inserting data
-        $stmt = $conn->prepare("
+        $stmt = $pdo->prepare("
             INSERT INTO review (id, user_name, user_rating, user_review, datetime) 
-            VALUES (?, ?, ?, ?, NOW())
+            VALUES (:product_id, :user_name, :user_rating, :user_review, :datetime)
         ");
-        $stmt->bind_param("issi", $product_id, $user_name, $user_rating, $user_review);
+        
+        $datetime = time(); // Current UNIX timestamp
+
+        // Bind parameters
+        $stmt->bindParam(':product_id', $product_id, PDO::PARAM_INT);
+        $stmt->bindParam(':user_name', $user_name, PDO::PARAM_STR);
+        $stmt->bindParam(':user_rating', $user_rating, PDO::PARAM_INT);
+        $stmt->bindParam(':user_review', $user_review, PDO::PARAM_STR);
+        $stmt->bindParam(':datetime', $datetime, PDO::PARAM_INT);
 
         // Execute the statement
         if ($stmt->execute()) {
