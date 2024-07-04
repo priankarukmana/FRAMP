@@ -1,58 +1,72 @@
 <?php
 // Establish database connection
-$host = 'localhost';
-$dbname = 'shop';
-$username = 'root';
-$password = '';
+include 'config.php'; // Ensure this file has your database connection settings
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die("Connection failed: " . $e->getMessage());
-}
-
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // Validate and sanitize product_id
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $product_id = filter_input(INPUT_POST, 'product_id', FILTER_SANITIZE_NUMBER_INT);
-
+    
     if ($product_id === null || !is_numeric($product_id)) {
-        die("Error: Invalid product ID");
+        echo json_encode(["status" => "error", "message" => "Invalid product ID"]);
+        exit;
     }
 
     try {
-        // Prepare SQL statement to fetch reviews for the selected product
-        $stmt_reviews = $pdo->prepare("
+        // Use PDO for the database connection from config.php
+        global $pdo;
+
+        // Fetch average rating and review count
+        $stmt = $pdo->prepare("
+            SELECT 
+                AVG(user_rating) as average_rating, 
+                COUNT(*) as total_review 
+            FROM review 
+            WHERE id = :product_id
+        ");
+        $stmt->bindParam(':product_id', $product_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $rating_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Fetch review counts for each star rating
+        $star_rating_data = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as count 
+                FROM review 
+                WHERE id = :product_id 
+                AND user_rating = :rating
+            ");
+            $stmt->bindParam(':product_id', $product_id, PDO::PARAM_INT);
+            $stmt->bindParam(':rating', $i, PDO::PARAM_INT);
+            $stmt->execute();
+            $star_rating_data[$i . '_star_review'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+        }
+
+        // Fetch review details ordered by datetime in descending order
+        $stmt = $pdo->prepare("
             SELECT user_name, user_rating, user_review, datetime 
             FROM review 
             WHERE id = :product_id
             ORDER BY datetime DESC
         ");
-        $stmt_reviews->bindParam(':product_id', $product_id, PDO::PARAM_INT);
-        $stmt_reviews->execute();
-        $reviews = $stmt_reviews->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->bindParam(':product_id', $product_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $review_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Display reviews
-        if (count($reviews) > 0) {
-            echo "<h2>Reviews for Selected Product</h2>";
-            echo "<ul>";
-            foreach ($reviews as $review) {
-                echo "<li>";
-                echo "<strong>User: </strong>" . htmlspecialchars($review['user_name']) . "<br>";
-                echo "<strong>Rating: </strong>" . htmlspecialchars($review['user_rating']) . "<br>";
-                echo "<strong>Review: </strong>" . htmlspecialchars($review['user_review']) . "<br>";
-                echo "<strong>Date: </strong>" . htmlspecialchars($review['datetime']) . "<br>";
-                echo "</li>";
-            }
-            echo "</ul>";
-        } else {
-            echo "No reviews found for the selected product.";
-        }
+        // Prepare response
+        $response = [
+            'average_rating' => round($rating_data['average_rating'], 1),
+            'total_review' => $rating_data['total_review']
+        ];
+
+        $response = array_merge($response, $star_rating_data);
+        $response['review_data'] = $review_data;
+
+        echo json_encode($response);
+
     } catch (PDOException $e) {
-        echo "Error: " . $e->getMessage();
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
 } else {
-    echo "Error: Invalid request method.";
+    echo json_encode(["status" => "error", "message" => "Invalid request method"]);
 }
 ?>
